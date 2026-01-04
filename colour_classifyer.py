@@ -1,6 +1,6 @@
 import os
 from colorist import bg_hsl
-from PIL import Image, ImageColor
+from PIL import Image
 import colorsys
 Image.MAX_IMAGE_PIXELS = None  # Disable decompression bomb check
 
@@ -8,20 +8,21 @@ source_folder = r"C:\Users\ellio\Pictures\Artwork for room\TrialCode\SourceFolde
 output_folder = r"C:\Users\ellio\Pictures\Artwork for room\TrialCode\OutputFolder"
 
 def count_images_in_folder():
-    image_count = 0
-    list_of_image_paths = []  # Changed to a list to store paths
-    for each_image in os.scandir(source_folder):  # Re-scan here
-        if each_image.is_file():
-            list_of_image_paths.append(each_image.path)  # Store the path
-            image_count += 1
-    print(f"{image_count} images detected")    
-    return(list_of_image_paths)
+    image_paths = []
+
+    for root, dirs, files in os.walk(source_folder):
+        for file in files:
+            file_path = os.path.join(root, file)
+            image_paths.append(file_path)
+
+    print(f"{len(image_paths)} images detected")
+    return image_paths
 
 def user_requirements():
     desired_hue = int(input("Enter the hue you'd like: "))
     desired_saturation = int(input("Enter the saturation you'd like: "))
     desired_lightness = int(input("Enter the desired lightness you'd like: "))
-    bg_hsl("Colour confirmed", desired_hue, desired_saturation, desired_lightness)
+    bg_hsl("Colour confirmed", desired_hue, desired_lightness, desired_saturation)
     
     desired_scope = input("On a scale of 0-100 (most accurate), how close do you want the match? ")
     desired_intensity = input("Enter how much of that colour you want in the image ")
@@ -48,7 +49,11 @@ def calc_opposite_colour(desired_hue, desired_saturation, desired_lightness):
     return opp_hue, opp_sat, opp_light
 
 def resized_image(image_file):
-    current_image = Image.open(image_file)  # Now receives a string path
+    try:
+        current_image = Image.open(image_file)  # Now receives a string path
+    except Exception as e:
+        print(f"Error opening image: {e}")
+        return None, None
     #print(f"File size detected as {current_image.size}")
     new_max = 300
     new_thumbnail = current_image.copy()
@@ -59,12 +64,10 @@ def resized_image(image_file):
     return new_thumbnail, new_size
 
 def average_colour(image_file, size):
-    r_tot = 0
-    g_tot = 0
-    b_tot = 0
+    r_tot = g_tot = b_tot = 0
 
-    img = Image.open(image_file)
-    img = img.convert('RGB')
+    #img = Image.open(image_file)
+    img = image_file.convert('RGB')
     width, height = size
     for x in range (0, width):
         for y in range (0, height):
@@ -75,9 +78,9 @@ def average_colour(image_file, size):
     av_r = r_tot / (width * height)
     av_g = g_tot / (width * height)
     av_b = b_tot / (width * height)
-    hls = colorsys.rgb_to_hls(av_r / 255.0, av_g / 255.0, av_b / 255.0)
-    hsl = (hls[0], hls[2], hls[1])
-    bg_hsl("Average colour determined", hls[0], hls[2], hls[1])
+    h, l, s = colorsys.rgb_to_hls(av_r/255, av_g/255, av_b/255)
+    hsl = (h * 360, s * 100, l * 100)
+    bg_hsl("Average colour determined", hsl[0], hsl[1], hsl[2])
     return hsl
 
 def colour_match(opp_hue, opp_sat, opp_light, av_hue, av_sat, av_light, tolerance):
@@ -86,18 +89,18 @@ def colour_match(opp_hue, opp_sat, opp_light, av_hue, av_sat, av_light, toleranc
 
     # ---- linear interpolation for tolerances ----
     # Hue tolerance: 100 -> 5°, 0 -> 40°
-    hue_min_tol = 5.0
-    hue_max_tol = 40.0
+    hue_min_tol = 15.0
+    hue_max_tol = 90.0
     hue_tol = hue_min_tol + (hue_max_tol - hue_min_tol) * (1.0 - t / 100.0)
 
     # Saturation tolerance: 100 -> 5, 0 -> 15
-    sat_min_tol = 5.0
-    sat_max_tol = 15.0
+    sat_min_tol = 10.0
+    sat_max_tol = 40.0
     sat_tol = sat_min_tol + (sat_max_tol - sat_min_tol) * (1.0 - t / 100.0)
 
     # Lightness tolerance: same ias above
-    light_min_tol = 5.0
-    light_max_tol = 15.0
+    light_min_tol = 10.0
+    light_max_tol = 40.0
     light_tol = light_min_tol + (light_max_tol - light_min_tol) * (1.0 - t / 100.0)
 
     # ---- Hue difference with wrap-around (shortest angular distance) ----
@@ -130,17 +133,17 @@ def classify_image(image_path, size, hue, sat, light, scope, frequency):
     # Calculate tolerances based on scope (0-100)
     # Hue tolerance: 100 scope -> 5°, 0 scope -> 40°
     hue_min_tol = 5.0
-    hue_max_tol = 40.0
+    hue_max_tol = 60.0
     hue_tol = hue_min_tol + (hue_max_tol - hue_min_tol) * (1.0 - float(scope) / 100.0)
 
     # Saturation tolerance: 100 scope -> 5, 0 scope -> 15
     sat_min_tol = 5.0
-    sat_max_tol = 15.0
+    sat_max_tol = 25.0
     sat_tol = sat_min_tol + (sat_max_tol - sat_min_tol) * (1.0 - float(scope) / 100.0)
 
     # Lightness tolerance: same as above
     light_min_tol = 5.0
-    light_max_tol = 15.0
+    light_max_tol = 25.0
     light_tol = light_min_tol + (light_max_tol - light_min_tol) * (1.0 - float(scope) / 100.0)
 
     # Define hue range with wrap-around
@@ -175,14 +178,16 @@ def classify_image(image_path, size, hue, sat, light, scope, frequency):
             if hue_ok and (lower_s < s < upper_s) and (lower_l < l < upper_l):
                 suitability += 1
 
-    threshold = width * height            
-    print(f"Image score = {suitability} / {threshold}")            
+    threshold = width * height
+    score = round(suitability * 100 / threshold, 2)
+    if score > 0:            
+        print(f"Pixel match of = {suitability} / {threshold}, {score}%")            
 
     if (suitability / (threshold)) > (float(frequency) / 100.0):
         print("Image accepted and saved")
         return True, suitability
     else:
-        print("Criteria not met")
+        #print("Criteria not met")
         return False, suitability
 
 list_of_image_paths = count_images_in_folder()
@@ -194,16 +199,25 @@ bg_hsl("Opposite colour calculated", opp_hue, opp_sat, opp_light)
 counter = 0
 best_image_num = None
 best_image_score = 0
+sorted_images = []
 
 for each_image_path in list_of_image_paths:  # Iterates over paths
+    print()
+    print()
+    
     counter += 1
-    print(f"Checking image {counter}")
+    file_name = os.path.basename(each_image_path)
+    print(f"Checking image {counter}, image name: {file_name}")
 
     opp_hsl = calc_opposite_colour(desired_hue, desired_saturation, desired_lightness)
     
     new_thumbnail, new_size = resized_image(each_image_path)
-    avg_hsl = average_colour(each_image_path, new_size)
+    if new_thumbnail is None:
+        print("Skipping corrupted image")
+        continue
+    avg_hsl = average_colour(new_thumbnail, new_size)
     
+    #check if av colour is anywhere close
     if colour_match(*opp_hsl, *avg_hsl, desired_scope):
         print("Image discounted as colours are no where near what user is looking for")
         continue # breaks this run of the loop
@@ -215,11 +229,11 @@ for each_image_path in list_of_image_paths:  # Iterates over paths
         best_image_num = counter
     
     if accepted:
-        output_file_path = os.path.join(output_folder, os.path.basename(each_image_path))
+        relative_path = os.path.relpath(each_image_path, source_folder)
+        output_file_path = os.path.join(output_folder, relative_path)
+        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
         new_thumbnail.save(output_file_path)
+        sorted_images.append(file_name)
     
-    print()
-    print()
-
-print(f"best image score {best_image_score}")
-    
+print(f"best image score {best_image_score} at image number {best_image_num}, acceptable images:")
+print(sorted_images)  
